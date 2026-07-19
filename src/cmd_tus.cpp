@@ -631,7 +631,6 @@ ErrorType ClientSession::CmdTusGetFriendsDataStatus(StreamExtractor& data, QByte
         }
     }
 
-    // Sort by last-changed date (SceNpTusDataStatusSortType, 1-based per SDK/RPCN):
     // 1 = descending date, 2 = ascending date.
     const bool ascending = req.sorttype() == 2;
     std::sort(rows.begin(), rows.end(), [ascending](const FriendStatus& a, const FriendStatus& b) {
@@ -687,7 +686,6 @@ ErrorType ClientSession::CmdTusGetFriendsVariable(StreamExtractor& data, QByteAr
         }
     }
 
-    // sortType (SceNpTusVariableSortType, 1-based per SDK/RPCN):
     // 1 = DESC date, 2 = ASC date, 3 = DESC value, 4 = ASC value.
     const int32_t st = req.sorttype();
     std::sort(rows.begin(), rows.end(), [st](const FriendVar& a, const FriendVar& b) {
