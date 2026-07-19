@@ -9,7 +9,7 @@
 #include <QString>
 #include <QVector>
 
-// One Title User Storage variable slot. `set` is false when the slot has never
+// One Title User Storage variable slot.
 // been written (no DB row).
 struct TusVariableRow {
     int64_t ownerUserId = 0;
@@ -21,7 +21,7 @@ struct TusVariableRow {
     int64_t lastChangedAuthorId = 0;
 };
 
-// One Title User Storage data slot. `data` is only populated for payload reads.
+// One Title User Storage data slot.
 struct TusDataRow {
     int64_t ownerUserId = 0;
     int32_t slotId = 0;
@@ -33,8 +33,6 @@ struct TusDataRow {
     int64_t lastChangedAuthorId = 0;
 };
 
-// Thin SQLite wrapper for TUS, constructed per-operation from a session's
-// connection, mirroring ScoreDb.
 class TusDb {
 public:
     explicit TusDb(const QSqlDatabase& db) : m_db(db) {}
@@ -52,9 +50,7 @@ public:
     bool SetVUserVariable(const QString& comId, const QString& virtualUser, int32_t slot,
                           int64_t value, int64_t authorId, uint64_t now);
 
-    // Atomic add-and-return. Wraps read+write in one transaction; Qt SQLite
-    // serialises access on the single connection. Returns the row with both the
-    // new value and the prior value (oldVariable).
+    // Atomic add-and-return. Wraps read+write in one transaction
     std::optional<TusVariableRow> AddAndGetVariable(const QString& comId, int64_t owner,
                                                     int32_t slot, int64_t delta, int64_t authorId,
                                                     uint64_t now);
@@ -69,16 +65,14 @@ public:
     enum class AddStatus { Ok, Conflict, DbError };
 
     // AddAndGetVariable with virtual-user support and optional conflict checks.
-    // virtualUser empty -> real account (keyed by `owner`); non-empty -> virtual user.
+    // virtualUser empty then real account ,non-empty then virtual user.
     std::optional<TusVariableRow> AddAndGetVariableEx(const QString& comId, int64_t owner,
                                                       const QString& virtualUser, int32_t slot,
                                                       int64_t delta, int64_t authorId, uint64_t now,
-                                                      const ConflictCheck& check, AddStatus& status);
+                                                      const ConflictCheck& check,
+                                                      AddStatus& status);
 
-    // Conditional write (sceNpTusTryAndSetVariable). Compares `comparand` against the
-    // current value using `opeType` (1..6 per SDK order); writes `value` if the
-    // condition holds (or the slot is unset). Condition-not-met is NOT an error: the
-    // row is returned unchanged. Author/date checks behave as in AddAndGetVariableEx.
+    // Conditional write (sceNpTusTryAndSetVariable).
     std::optional<TusVariableRow> TryAndSetVariableEx(const QString& comId, int64_t owner,
                                                       const QString& virtualUser, int32_t slot,
                                                       int32_t opeType, int64_t value,
@@ -92,7 +86,7 @@ public:
     // Virtual-user data read; keyed by virtual_user.
     std::optional<TusDataRow> GetVUserData(const QString& comId, const QString& virtualUser,
                                            int32_t slot, bool withPayload);
-    // One row per requested slot, in order; unset slots come back with set=false.
+    // One row per requested slot, in order
     QVector<TusVariableRow> GetVariables(const QString& comId, int64_t owner,
                                          const QVector<int32_t>& slotIds);
     // Virtual-user variant: one row per requested slot for a virtual user.
@@ -114,10 +108,9 @@ public:
     bool DeleteVUserVariableSlots(const QString& comId, const QString& virtualUser,
                                   const QVector<int32_t>& slotIds);
 
-    // npid (== account.username) -> account user_id. Duplicates ScoreDb's lookup;
-    // promote to Database if you want a single implementation.
+    // npid (== account.username) to account user_id.
     std::optional<int64_t> UserIdForNpid(const QString& npid);
-    // Reverse of UserIdForNpid: account user_id -> npid (account.username).
+    // Reverse of UserIdForNpid: account user_id to npid (account.username).
     std::optional<QString> NpidForUserId(int64_t userId);
 
 private:

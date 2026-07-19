@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: Copyright 2019-2026 rpcsn Project
 // SPDX-FileCopyrightText: Copyright 2026 shadNet Project
 // SPDX-License-Identifier: GPL-2.0-or-later
-#include "tus_db.h"
 #include <QSqlQuery>
 #include <QVariant>
+#include "tus_db.h"
 
 bool TusDb::SetVariable(const QString& comId, int64_t owner, int32_t slot, int64_t value,
                         int64_t authorId, uint64_t now) {
@@ -40,8 +40,8 @@ bool TusDb::SetVUserVariable(const QString& comId, const QString& virtualUser, i
 }
 
 std::optional<TusVariableRow> TusDb::AddAndGetVariable(const QString& comId, int64_t owner,
-                                                       int32_t slot, int64_t delta, int64_t authorId,
-                                                       uint64_t now) {
+                                                       int32_t slot, int64_t delta,
+                                                       int64_t authorId, uint64_t now) {
     m_db.transaction();
 
     QSqlQuery sel(m_db);
@@ -88,15 +88,14 @@ std::optional<TusVariableRow> TusDb::AddAndGetVariable(const QString& comId, int
 }
 
 std::optional<TusVariableRow> TusDb::AddAndGetVariableEx(const QString& comId, int64_t owner,
-                                                        const QString& virtualUser, int32_t slot,
-                                                        int64_t delta, int64_t authorId,
-                                                        uint64_t now, const ConflictCheck& check,
-                                                        AddStatus& status) {
+                                                         const QString& virtualUser, int32_t slot,
+                                                         int64_t delta, int64_t authorId,
+                                                         uint64_t now, const ConflictCheck& check,
+                                                         AddStatus& status) {
     const bool vuser = !virtualUser.isEmpty();
-    const QString table = vuser ? QStringLiteral("tus_vuser_variable")
-                                : QStringLiteral("tus_variable");
-    const QString keyCol = vuser ? QStringLiteral("virtual_user")
-                                 : QStringLiteral("owner_user_id");
+    const QString table =
+        vuser ? QStringLiteral("tus_vuser_variable") : QStringLiteral("tus_variable");
+    const QString keyCol = vuser ? QStringLiteral("virtual_user") : QStringLiteral("owner_user_id");
 
     m_db.transaction();
 
@@ -122,7 +121,6 @@ std::optional<TusVariableRow> TusDb::AddAndGetVariableEx(const QString& comId, i
         existed = true;
     }
 
-    // Conflict checks: per SDK, a check fails outright if no variable is registered.
     if (check.hasAuthor || check.hasDate) {
         if (!existed || (check.hasAuthor && curAuthor != check.authorId) ||
             (check.hasDate && curDate > check.date)) {
@@ -177,10 +175,9 @@ std::optional<TusVariableRow> TusDb::TryAndSetVariableEx(const QString& comId, i
                                                          uint64_t now, const ConflictCheck& check,
                                                          AddStatus& status) {
     const bool vuser = !virtualUser.isEmpty();
-    const QString table = vuser ? QStringLiteral("tus_vuser_variable")
-                                : QStringLiteral("tus_variable");
-    const QString keyCol = vuser ? QStringLiteral("virtual_user")
-                                 : QStringLiteral("owner_user_id");
+    const QString table =
+        vuser ? QStringLiteral("tus_vuser_variable") : QStringLiteral("tus_variable");
+    const QString keyCol = vuser ? QStringLiteral("virtual_user") : QStringLiteral("owner_user_id");
 
     m_db.transaction();
 
@@ -249,13 +246,13 @@ std::optional<TusVariableRow> TusDb::TryAndSetVariableEx(const QString& comId, i
     if (conditionMet) {
         finalVal = value;
         QSqlQuery up(m_db);
-        up.prepare(QStringLiteral(
-                       "INSERT INTO %1(communication_id,%2,slot_id,variable,last_changed,"
-                       "last_changed_author_id) VALUES(?,?,?,?,?,?) "
-                       "ON CONFLICT(communication_id,%2,slot_id) DO UPDATE SET "
-                       "variable=excluded.variable,last_changed=excluded.last_changed,"
-                       "last_changed_author_id=excluded.last_changed_author_id")
-                       .arg(table, keyCol));
+        up.prepare(
+            QStringLiteral("INSERT INTO %1(communication_id,%2,slot_id,variable,last_changed,"
+                           "last_changed_author_id) VALUES(?,?,?,?,?,?) "
+                           "ON CONFLICT(communication_id,%2,slot_id) DO UPDATE SET "
+                           "variable=excluded.variable,last_changed=excluded.last_changed,"
+                           "last_changed_author_id=excluded.last_changed_author_id")
+                .arg(table, keyCol));
         up.addBindValue(comId);
         if (vuser) {
             up.addBindValue(virtualUser);
@@ -293,7 +290,8 @@ bool TusDb::SetData(const QString& comId, int64_t owner, int32_t slot, const QBy
               "last_changed,last_changed_author_id) VALUES(?,?,?,?,?,?,?,?) "
               "ON CONFLICT(communication_id,owner_user_id,slot_id) DO UPDATE SET "
               "data=excluded.data,info=excluded.info,data_size=excluded.data_size,"
-              "last_changed=excluded.last_changed,last_changed_author_id=excluded.last_changed_author_id");
+              "last_changed=excluded.last_changed,last_changed_author_id=excluded.last_changed_"
+              "author_id");
     q.addBindValue(comId);
     q.addBindValue(static_cast<qint64>(owner));
     q.addBindValue(slot);
@@ -309,11 +307,13 @@ bool TusDb::SetVUserData(const QString& comId, const QString& virtualUser, int32
                          const QByteArray& data, const QByteArray& info, int64_t authorId,
                          uint64_t now) {
     QSqlQuery q(m_db);
-    q.prepare("INSERT INTO tus_vuser_data(communication_id,virtual_user,slot_id,data,info,data_size,"
-              "last_changed,last_changed_author_id) VALUES(?,?,?,?,?,?,?,?) "
-              "ON CONFLICT(communication_id,virtual_user,slot_id) DO UPDATE SET "
-              "data=excluded.data,info=excluded.info,data_size=excluded.data_size,"
-              "last_changed=excluded.last_changed,last_changed_author_id=excluded.last_changed_author_id");
+    q.prepare(
+        "INSERT INTO tus_vuser_data(communication_id,virtual_user,slot_id,data,info,data_size,"
+        "last_changed,last_changed_author_id) VALUES(?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(communication_id,virtual_user,slot_id) DO UPDATE SET "
+        "data=excluded.data,info=excluded.info,data_size=excluded.data_size,"
+        "last_changed=excluded.last_changed,last_changed_author_id=excluded.last_changed_author_"
+        "id");
     q.addBindValue(comId);
     q.addBindValue(virtualUser);
     q.addBindValue(slot);
@@ -473,8 +473,8 @@ QVector<TusDataRow> TusDb::GetVUserDataStatuses(const QString& comId, const QStr
 }
 
 bool TusDb::DeleteSlots(const QString& comId, int64_t owner, const QVector<int32_t>& slotIds) {
-    // DeleteMultiSlotData deletes TUS *data* only; the variable in the same slot is
-    // untouched (see sceNpTusDeleteMultiSlotVariable for that). Matches RPCN.
+    // DeleteMultiSlotData deletes TUS *data* only. the variable in the same slot is
+    // untouched
     bool ok = true;
     for (int32_t slot : slotIds) {
         QSqlQuery qd(m_db);
@@ -490,7 +490,7 @@ bool TusDb::DeleteSlots(const QString& comId, int64_t owner, const QVector<int32
 
 bool TusDb::DeleteVUserSlots(const QString& comId, const QString& virtualUser,
                              const QVector<int32_t>& slotIds) {
-    // Data-only (vuser); the vuser variable in the same slot is left intact.
+    // Data-only (vuser). the vuser variable in the same slot is left intact.
     bool ok = true;
     for (int32_t slot : slotIds) {
         QSqlQuery qd(m_db);
