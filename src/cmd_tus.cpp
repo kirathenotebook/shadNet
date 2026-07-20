@@ -39,7 +39,7 @@ static std::optional<int64_t> resolveTusOwner(TusDb& tdb, const ClientInfo& me,
     return uid;
 }
 
-static void fillVariable(shadnet::TusVariable* v, const TusVariableRow& r,
+static void fillVariable(TusDb& tdb, shadnet::TusVariable* v, const TusVariableRow& r,
                          const std::string& ownerNpId) {
     v->set_ownernpid(ownerNpId);
     v->set_set(r.set);
@@ -48,9 +48,16 @@ static void fillVariable(shadnet::TusVariable* v, const TusVariableRow& r,
     v->set_lastchangeddate(r.lastChanged);
     v->set_owneraccountid(r.ownerUserId);
     v->set_lastchangedauthoraccountid(r.lastChangedAuthorId);
+    // Resolve the author's online id so the client can fill the npid-based
+    // struct fields (base/A/CrossSave variants all expose it).
+    if (r.set && r.lastChangedAuthorId != 0) {
+        if (auto np = tdb.NpidForUserId(r.lastChangedAuthorId)) {
+            v->set_lastchangedauthornpid(np->toStdString());
+        }
+    }
 }
 
-static void fillDataStatus(shadnet::TusDataStatus* s, const TusDataRow& r,
+static void fillDataStatus(TusDb& tdb, shadnet::TusDataStatus* s, const TusDataRow& r,
                            const std::string& ownerNpId) {
     s->set_ownernpid(ownerNpId);
     s->set_set(r.set);
@@ -59,6 +66,11 @@ static void fillDataStatus(shadnet::TusDataStatus* s, const TusDataRow& r,
     s->set_info(r.info.constData(), r.info.size());
     s->set_owneraccountid(r.ownerUserId);
     s->set_lastchangedauthoraccountid(r.lastChangedAuthorId);
+    if (r.set && r.lastChangedAuthorId != 0) {
+        if (auto np = tdb.NpidForUserId(r.lastChangedAuthorId)) {
+            s->set_lastchangedauthornpid(np->toStdString());
+        }
+    }
 }
 
 // TusSetData
@@ -152,13 +164,13 @@ ErrorType ClientSession::CmdTusGetData(StreamExtractor& data, QByteArray& reply)
         auto row = tdb.GetVUserData(cid, QString::fromStdString(req.virtualuser()), req.slotid(),
                                     /*withPayload=*/true);
         if (row) {
-            fillDataStatus(resp.mutable_status(), *row, std::string());
+            fillDataStatus(tdb, resp.mutable_status(), *row, std::string());
             resp.set_data(row->data.constData(), row->data.size());
         } else {
             TusDataRow empty;
             empty.slotId = req.slotid();
             empty.set = false;
-            fillDataStatus(resp.mutable_status(), empty, std::string());
+            fillDataStatus(tdb, resp.mutable_status(), empty, std::string());
         }
         appendProto(reply, resp);
         return ErrorType::NoError;
@@ -181,7 +193,7 @@ ErrorType ClientSession::CmdTusGetData(StreamExtractor& data, QByteArray& reply)
     shadnet::TusGetDataResponse resp;
     auto row = tdb.GetData(cid, ownerUserId, req.slotid(), /*withPayload=*/true);
     if (row) {
-        fillDataStatus(resp.mutable_status(), *row, ownerNpidStr);
+        fillDataStatus(tdb, resp.mutable_status(), *row, ownerNpidStr);
         resp.set_data(row->data.constData(), row->data.size());
     } else {
         // Unset slot is not an error on hardware: report set=false, no data.
@@ -189,7 +201,7 @@ ErrorType ClientSession::CmdTusGetData(StreamExtractor& data, QByteArray& reply)
         empty.ownerUserId = ownerUserId;
         empty.slotId = req.slotid();
         empty.set = false;
-        fillDataStatus(resp.mutable_status(), empty, ownerNpidStr);
+        fillDataStatus(tdb, resp.mutable_status(), empty, ownerNpidStr);
     }
     appendProto(reply, resp);
     return ErrorType::NoError;
@@ -264,7 +276,7 @@ ErrorType ClientSession::CmdTusGetMultiSlotVariable(StreamExtractor& data, QByte
         auto rows = tdb.GetVUserVariables(tusComId(comId), QString::fromStdString(vu), _slots);
         shadnet::TusVariableResponse resp;
         for (const auto& r : rows) {
-            fillVariable(resp.add_variables(), r, vu);
+            fillVariable(tdb, resp.add_variables(), r, vu);
         }
         appendProto(reply, resp);
         return ErrorType::NoError;
@@ -291,7 +303,7 @@ ErrorType ClientSession::CmdTusGetMultiSlotVariable(StreamExtractor& data, QByte
 
     shadnet::TusVariableResponse resp;
     for (const auto& r : rows) {
-        fillVariable(resp.add_variables(), r, ownerNpId);
+        fillVariable(tdb, resp.add_variables(), r, ownerNpId);
     }
     appendProto(reply, resp);
     return ErrorType::NoError;
@@ -356,7 +368,7 @@ ErrorType ClientSession::CmdTusTryAndSetVariable(StreamExtractor& data, QByteArr
         return status == TusDb::AddStatus::Conflict ? ErrorType::CondFail : ErrorType::DbFail;
     }
     shadnet::TusVariableResponse resp;
-    fillVariable(resp.add_variables(), *row, ownerLabel);
+    fillVariable(tdb, resp.add_variables(), *row, ownerLabel);
     appendProto(reply, resp);
     return ErrorType::NoError;
 }
@@ -376,8 +388,8 @@ ErrorType ClientSession::CmdTusGetMultiUserVariable(StreamExtractor& data, QByte
     if (req.virtualusers_size() > 0) {
         for (const auto& vu : req.virtualusers()) {
             auto rows = tdb.GetVUserVariables(cid, QString::fromStdString(vu), slot);
-            fillVariable(resp.add_variables(), rows.isEmpty() ? TusVariableRow{} : rows.first(),
-                         vu);
+            fillVariable(tdb, resp.add_variables(),
+                         rows.isEmpty() ? TusVariableRow{} : rows.first(), vu);
         }
         appendProto(reply, resp);
         return ErrorType::NoError;
@@ -394,7 +406,7 @@ ErrorType ClientSession::CmdTusGetMultiUserVariable(StreamExtractor& data, QByte
                 row = rows.isEmpty() ? TusVariableRow{} : rows.first();
                 row.ownerUserId = *uid;
             }
-            fillVariable(resp.add_variables(), row, np);
+            fillVariable(tdb, resp.add_variables(), row, np);
         }
         appendProto(reply, resp);
         return ErrorType::NoError;
@@ -410,7 +422,7 @@ ErrorType ClientSession::CmdTusGetMultiUserVariable(StreamExtractor& data, QByte
         // GetVariables returns exactly one row per requested slot (set=false if absent).
         TusVariableRow row = rows.isEmpty() ? TusVariableRow{} : rows.first();
         row.ownerUserId = accId; // keep the account id even for unset slots
-        fillVariable(resp.add_variables(), row, npid);
+        fillVariable(tdb, resp.add_variables(), row, npid);
     }
     appendProto(reply, resp);
     return ErrorType::NoError;
@@ -453,9 +465,6 @@ ErrorType ClientSession::CmdTusAddAndGetVariable(StreamExtractor& data, QByteArr
     check.hasAuthor = req.hasauthorcheck();
     check.authorId = req.islastchangedauthor();
     if (check.hasAuthor && !req.islastchangedauthornpid().empty()) {
-        // Base variant supplies the author as an npId; resolve to a user_id. An
-        // unresolved npId yields -1, which cannot match a stored author (so the
-        // guarded write fails, which is the safe outcome).
         auto aid = tdb.UserIdForNpid(QString::fromStdString(req.islastchangedauthornpid()));
         check.authorId = aid.value_or(-1);
     }
@@ -470,7 +479,7 @@ ErrorType ClientSession::CmdTusAddAndGetVariable(StreamExtractor& data, QByteArr
         return status == TusDb::AddStatus::Conflict ? ErrorType::CondFail : ErrorType::DbFail;
     }
     shadnet::TusVariableResponse resp;
-    fillVariable(resp.add_variables(), *row, ownerLabel);
+    fillVariable(tdb, resp.add_variables(), *row, ownerLabel);
     appendProto(reply, resp);
     return ErrorType::NoError;
 }
@@ -495,7 +504,7 @@ ErrorType ClientSession::CmdTusGetMultiSlotDataStatus(StreamExtractor& data, QBy
                                              QString::fromStdString(req.virtualuser()), _slots);
         shadnet::TusDataStatusResponse resp;
         for (const auto& r : rows) {
-            fillDataStatus(resp.add_statuses(), r, std::string());
+            fillDataStatus(tdb, resp.add_statuses(), r, std::string());
         }
         appendProto(reply, resp);
         return ErrorType::NoError;
@@ -524,7 +533,7 @@ ErrorType ClientSession::CmdTusGetMultiSlotDataStatus(StreamExtractor& data, QBy
 
     shadnet::TusDataStatusResponse resp;
     for (const auto& r : rows) {
-        fillDataStatus(resp.add_statuses(), r, ownerNpidStr);
+        fillDataStatus(tdb, resp.add_statuses(), r, ownerNpidStr);
     }
     appendProto(reply, resp);
     return ErrorType::NoError;
@@ -548,12 +557,12 @@ ErrorType ClientSession::CmdTusGetMultiUserDataStatus(StreamExtractor& data, QBy
         auto row = tdb.GetVUserData(cid, QString::fromStdString(vu), req.slotid(),
                                     /*withPayload=*/false);
         if (row) {
-            fillDataStatus(resp.add_statuses(), *row, std::string());
+            fillDataStatus(tdb, resp.add_statuses(), *row, std::string());
         } else {
             TusDataRow empty;
             empty.slotId = req.slotid();
             empty.set = false;
-            fillDataStatus(resp.add_statuses(), empty, std::string());
+            fillDataStatus(tdb, resp.add_statuses(), empty, std::string());
         }
     }
     for (const auto& npid : req.ownernpids()) {
@@ -562,18 +571,18 @@ ErrorType ClientSession::CmdTusGetMultiUserDataStatus(StreamExtractor& data, QBy
             TusDataRow miss;
             miss.slotId = req.slotid();
             miss.set = false;
-            fillDataStatus(resp.add_statuses(), miss, npid);
+            fillDataStatus(tdb, resp.add_statuses(), miss, npid);
             continue;
         }
         auto row = tdb.GetData(cid, *uid, req.slotid(), /*withPayload=*/false);
         if (row) {
-            fillDataStatus(resp.add_statuses(), *row, npid);
+            fillDataStatus(tdb, resp.add_statuses(), *row, npid);
         } else {
             TusDataRow empty;
             empty.ownerUserId = *uid;
             empty.slotId = req.slotid();
             empty.set = false;
-            fillDataStatus(resp.add_statuses(), empty, npid);
+            fillDataStatus(tdb, resp.add_statuses(), empty, npid);
         }
     }
     for (int64_t accId : req.owneraccountids()) {
@@ -584,13 +593,13 @@ ErrorType ClientSession::CmdTusGetMultiUserDataStatus(StreamExtractor& data, QBy
         }
         auto row = tdb.GetData(cid, accId, req.slotid(), /*withPayload=*/false);
         if (row) {
-            fillDataStatus(resp.add_statuses(), *row, accNpid);
+            fillDataStatus(tdb, resp.add_statuses(), *row, accNpid);
         } else {
             TusDataRow empty2;
             empty2.ownerUserId = accId;
             empty2.slotId = req.slotid();
             empty2.set = false;
-            fillDataStatus(resp.add_statuses(), empty2, accNpid);
+            fillDataStatus(tdb, resp.add_statuses(), empty2, accNpid);
         }
     }
     appendProto(reply, resp);
@@ -645,7 +654,7 @@ ErrorType ClientSession::CmdTusGetFriendsDataStatus(StreamExtractor& data, QByte
 
     shadnet::TusDataStatusResponse resp;
     for (const auto& fs : rows) {
-        fillDataStatus(resp.add_statuses(), fs.row, fs.npid);
+        fillDataStatus(tdb, resp.add_statuses(), fs.row, fs.npid);
     }
     appendProto(reply, resp);
     return ErrorType::NoError;
@@ -709,7 +718,7 @@ ErrorType ClientSession::CmdTusGetFriendsVariable(StreamExtractor& data, QByteAr
 
     shadnet::TusVariableResponse resp;
     for (const auto& fv : rows) {
-        fillVariable(resp.add_variables(), fv.row, fv.npid);
+        fillVariable(tdb, resp.add_variables(), fv.row, fv.npid);
     }
     appendProto(reply, resp);
     return ErrorType::NoError;
