@@ -37,6 +37,7 @@ private:
     QByteArray BuildRegisteredJson() const;
     QByteArray BuildComIdScoreJson(const QString& comId) const;
     QByteArray BuildBoardScoreJson(const QString& comId, uint32_t boardId) const;
+    QByteArray BuildScoreListJson() const;
 
     ConfigManager* m_config = nullptr;
     ScoreCache* m_scoreCache = nullptr;

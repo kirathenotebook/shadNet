@@ -339,23 +339,6 @@ void ShadNetClient::requestSignalingInfos(const std::string& targetNpid) {
         buildPacket(CommandType::RequestSignalingInfos, packetCounter++, makeProtoPayload(req)));
 }
 
-void ShadNetClient::signalingEstablished(const std::string& targetNpid, uint32_t connId) {
-    shadnet::SignalingEstablishedRequest req;
-    req.set_target_npid(targetNpid);
-    req.set_conn_id(connId);
-    conn.send(
-        buildPacket(CommandType::SignalingEstablished, packetCounter++, makeProtoPayload(req)));
-}
-
-void ShadNetClient::activationConfirm(const std::string& meId, const std::string& initiatorIp,
-                                      uint32_t ctxTag) {
-    shadnet::ActivationConfirmRequest req;
-    req.set_me_id(meId);
-    req.set_initiator_ip(initiatorIp);
-    req.set_ctx_tag(ctxTag);
-    conn.send(buildPacket(CommandType::ActivationConfirm, packetCounter++, makeProtoPayload(req)));
-}
-
 void ShadNetClient::setRoomDataInternal(const SetRoomDataInternalParams& p) {
     shadnet::SetRoomDataInternalRequest req;
     req.set_req_id(p.reqId);
@@ -788,20 +771,6 @@ void ShadNetClient::handleNotification(const Packet& pkt) {
                (unsigned long long)n.roomId, n.memberId, n.connId);
         if (onSignalingEvent)
             onSignalingEvent(n);
-        break;
-    }
-    case NotificationType::NpSignalingEvent: {
-        shadnet::NotifyNpSignalingEvent pb;
-        if (!pb.ParseFromString(blob)) {
-            printf("[notify] NpSignalingEvent: parse error\n");
-            break;
-        }
-        NotifyNpSignalingEvent n;
-        n.event = pb.event();
-        n.npid = pb.npid();
-        printf("[notify] NpSignalingEvent event=%u npid=%s\n", n.event, n.npid.c_str());
-        if (onNpSignalingEvent)
-            onNpSignalingEvent(n);
         break;
     }
     case NotificationType::RoomDataInternalUpdated: {

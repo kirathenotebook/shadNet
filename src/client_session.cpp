@@ -151,9 +151,21 @@ ErrorType ClientSession::DispatchCommand(CommandType cmd, StreamExtractor& se, Q
     if (LeadsWithComId(cmd)) {
         const QByteArray cid = se.peekBytes(12);
         if (cid.size() == 12) {
+            const QString comId = QString::fromLatin1(cid.constData(), cid.size());
+            if (!comId.isEmpty()) {
+                QString titleName;
+                {
+                    QReadLocker lk(&m_shared->clientsLock);
+                    auto it = m_shared->clients.constFind(m_info.userId);
+                    if (it != m_shared->clients.constEnd())
+                        titleName = it->titleName;
+                }
+                if (!titleName.isEmpty())
+                    m_db->SetTitleName(comId, titleName);
+            }
+
             // comId newly known/changed -> same-comId friends learn our title info.
-            if (m_shared->UsageTouchGame(m_info.userId,
-                                         QString::fromLatin1(cid.constData(), cid.size())))
+            if (m_shared->UsageTouchGame(m_info.userId, comId))
                 EmitPresenceGameTitleInfo();
         }
     }

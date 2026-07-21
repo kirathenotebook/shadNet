@@ -219,6 +219,19 @@ bool Database::Migrate() {
     ins.prepare("INSERT OR IGNORE INTO migration VALUES(1,'Initial setup')");
     Exec(ins);
 
+    QStringList stmts2 = {
+        "CREATE TABLE IF NOT EXISTS title_name("
+        "  communication_id TEXT NOT NULL PRIMARY KEY,"
+        "  title_name       TEXT NOT NULL)",
+    };
+
+    for (const QString& s : stmts2)
+        Exec(s);
+
+    QSqlQuery ins2(m_db);
+    ins2.prepare("INSERT OR IGNORE INTO migration VALUES(2,'title_name mapping')");
+    Exec(ins2);
+
     qInfo() << "Database migrations complete";
 
     RunMaintenance();
@@ -566,6 +579,48 @@ void Database::RunMaintenance() {
             }
         }
     }
+}
+
+// Title name mapping
+
+bool Database::SetTitleName(const QString& comId, const QString& titleName) {
+    if (comId.isEmpty() || titleName.isEmpty())
+        return false;
+    QSqlQuery q(m_db);
+    q.prepare("INSERT OR IGNORE INTO title_name(communication_id, title_name) "
+              "VALUES(?, ?)");
+    q.addBindValue(comId);
+    q.addBindValue(titleName);
+    return Exec(q);
+}
+
+std::optional<QString> Database::GetTitleName(const QString& comId) {
+    if (comId.isEmpty())
+        return std::nullopt;
+    QSqlQuery q(m_db);
+    q.prepare("SELECT title_name FROM title_name WHERE communication_id=?");
+    q.addBindValue(comId);
+    if (!Exec(q) || !q.next())
+        return std::nullopt;
+    return q.value(0).toString();
+}
+
+QList<Database::GameTitleRow> Database::ListScoredGameTitles() {
+    QList<GameTitleRow> out;
+    QSqlQuery q(m_db);
+    q.prepare("SELECT s.communication_id, COALESCE(tn.title_name, '') AS name "
+              "FROM (SELECT DISTINCT communication_id FROM score) s "
+              "LEFT JOIN title_name tn ON tn.communication_id = s.communication_id "
+              "ORDER BY name ASC, s.communication_id ASC");
+    if (!Exec(q))
+        return out;
+    while (q.next()) {
+        GameTitleRow r;
+        r.comId = q.value(0).toString();
+        r.titleName = q.value(1).toString();
+        out.append(r);
+    }
+    return out;
 }
 
 // Friendship DB methods

@@ -100,6 +100,16 @@ public:
     bool DeleteRel(int64_t callerId, int64_t otherId);
     UserRelationships GetRelationships(int64_t userId);
 
+    bool SetTitleName(const QString& comId, const QString& titleName);
+    std::optional<QString> GetTitleName(const QString& comId);
+
+    // Row returned by ListScoredGameTitles.
+    struct GameTitleRow {
+        QString comId;
+        QString titleName;
+    };
+    QList<GameTitleRow> ListScoredGameTitles();
+
     QString lastError() const {
         return m_lastError;
     }

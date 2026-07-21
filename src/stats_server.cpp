@@ -95,6 +95,12 @@ void StatsServer::RegisterRoutes() {
             CachedOrBuild(QStringLiteral("registered"), [this] { return BuildRegisteredJson(); }));
     });
 
+    // GET /<path>/scorelist  -> games (commId, titleName) that have scores
+    m_http->route(base + "/scorelist", [this](const QHttpServerRequest&) {
+        return jsonResponse(
+            CachedOrBuild(QStringLiteral("scorelist"), [this] { return BuildScoreListJson(); }));
+    });
+
     // GET /<path>/score/<comId>
     m_http->route(base + "/score/<arg>", [this](const QString& comId, const QHttpServerRequest&) {
         if (comId.size() < 9 || comId.size() > 12) {
@@ -212,5 +218,26 @@ QByteArray StatsServer::BuildBoardScoreJson(const QString& comId, uint32_t board
     root.insert("total_record", static_cast<qint64>(resp.totalrecord()));
     root.insert("last_sort_date", static_cast<qint64>(resp.lastsortdate()));
     root.insert("ranks", ranksToJson(resp));
+    return toJson(root);
+}
+
+QByteArray StatsServer::BuildScoreListJson() const {
+    QJsonObject root;
+    QJsonArray games;
+    Database db(QString{});
+    if (!db.Open(m_dbPath)) {
+        qWarning() << "StatsServer: cannot open DB for score list";
+        root.insert("error", QStringLiteral("db unavailable"));
+        root.insert("games", games);
+        return toJson(root);
+    }
+    const auto rows = db.ListScoredGameTitles();
+    for (const auto& row : rows) {
+        QJsonObject g;
+        g.insert("name", row.titleName);
+        g.insert("commid", row.comId);
+        games.append(g);
+    }
+    root.insert("games", games);
     return toJson(root);
 }
